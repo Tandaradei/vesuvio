@@ -87,8 +87,9 @@ namespace vesuvio {
 		createRenderPass();
 		createDescriptorSetLayout();
 		createGraphicsPipeline();
-		createFramebuffers();
 		createCommandPools();
+		createDepthResources();
+		createFramebuffers();
 		createTextureImage();
 		createTextureImageView();
 		createTextureSampler();
@@ -175,7 +176,7 @@ namespace vesuvio {
 		return shaderModule;
 	}
 
-	vk::ImageView Application::createImageView(vk::Image image, vk::Format format) {
+	vk::ImageView Application::createImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
 		vk::ImageViewCreateInfo viewInfo{};
 		viewInfo.image = image;
 		viewInfo.viewType = vk::ImageViewType::e2D;
@@ -184,7 +185,7 @@ namespace vesuvio {
 		viewInfo.components.g = vk::ComponentSwizzle::eIdentity;
 		viewInfo.components.b = vk::ComponentSwizzle::eIdentity;
 		viewInfo.components.a = vk::ComponentSwizzle::eIdentity;
-		viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+		viewInfo.subresourceRange.aspectMask = aspectFlags;
 		viewInfo.subresourceRange.baseMipLevel = 0;
 		viewInfo.subresourceRange.levelCount = 1;
 		viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -234,6 +235,35 @@ namespace vesuvio {
 		device.bindBufferMemory(allocatedBuffer.buffer, allocatedBuffer.memory, 0);
 
 		return allocatedBuffer;
+	}
+
+	void Application::createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties, vk::Image& dstImage, vk::DeviceMemory& dstImageMemory) {
+		vk::ImageCreateInfo imageInfo{};
+		imageInfo.imageType = vk::ImageType::e2D;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = format;
+		imageInfo.tiling = tiling;
+		imageInfo.usage = usage;
+		imageInfo.sharingMode = vk::SharingMode::eExclusive;
+		imageInfo.samples = vk::SampleCountFlagBits::e1;
+		imageInfo.flags = vk::ImageCreateFlags(); // Optional
+
+		dstImage = device.createImage(imageInfo);
+		assert(dstImage);
+
+		vk::MemoryRequirements memRequirements = device.getImageMemoryRequirements(dstImage);
+		vk::MemoryAllocateInfo allocInfo{};
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, memoryProperties);
+
+		dstImageMemory = device.allocateMemory(allocInfo);
+		assert(dstImageMemory);
+
+		device.bindImageMemory(dstImage, dstImageMemory, 0);
 	}
 
 	void Application::copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size, vk::CommandBuffer commandBuffer) {
@@ -324,7 +354,16 @@ namespace vesuvio {
 		imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		imageBarrier.image = image;
-		imageBarrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+		if (newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+			imageBarrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
+
+			if (hasStencilComponent(format)) {
+				imageBarrier.subresourceRange.aspectMask |= vk::ImageAspectFlagBits::eStencil;
+			}
+		}
+		else {
+			imageBarrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+		}
 		imageBarrier.subresourceRange.baseMipLevel = 0;
 		imageBarrier.subresourceRange.levelCount = 1;
 		imageBarrier.subresourceRange.baseArrayLayer = 0;
@@ -336,17 +375,29 @@ namespace vesuvio {
 		vk::PipelineStageFlags sourceStage;
 		vk::PipelineStageFlags destinationStage;
 
-		if (oldLayout == vk::ImageLayout::eUndefined && newLayout == vk::ImageLayout::eTransferDstOptimal) {
+		if (oldLayout == vk::ImageLayout::eUndefined ) {
 			imageBarrier.srcAccessMask = vk::AccessFlags();
-			imageBarrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
 			sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+		}
+		else if (oldLayout == vk::ImageLayout::eTransferDstOptimal) {
+			imageBarrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+			sourceStage = vk::PipelineStageFlagBits::eTransfer;
+		}
+		else {
+			assert(false);
+		}
+
+		if (newLayout == vk::ImageLayout::eTransferDstOptimal) {
+			imageBarrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
 			destinationStage = vk::PipelineStageFlagBits::eTransfer;
 		}
-		else if (oldLayout == vk::ImageLayout::eTransferDstOptimal && newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
-			imageBarrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+		else if (newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
 			imageBarrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-			sourceStage = vk::PipelineStageFlagBits::eTransfer;
 			destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+		}
+		else if (newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+			imageBarrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+			destinationStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
 		}
 		else {
 			assert(false);
@@ -561,6 +612,29 @@ namespace vesuvio {
 		return extensions;
 	}
 
+	vk::Format Application::findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features) {
+		for (vk::Format format : candidates) {
+			vk::FormatProperties properties = physicalDevice.getFormatProperties(format);
+			if ((tiling == vk::ImageTiling::eLinear && (properties.linearTilingFeatures & features) == features)
+				|| (tiling == vk::ImageTiling::eOptimal && (properties.optimalTilingFeatures & features) == features)) {
+				return format;
+			}
+		}
+		assert(false);
+	}
+
+	vk::Format Application::findDepthFormat() {
+		return findSupportedFormat(
+			{ vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
+			vk::ImageTiling::eOptimal,
+			vk::FormatFeatureFlagBits::eDepthStencilAttachment
+		);
+	}
+
+	bool Application::hasStencilComponent(vk::Format format) {
+		return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
+	}
+
 	void Application::createLogicalDevice() {
 		queueFamilyIndices = findQueueFamilies(physicalDevice);
 		std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
@@ -669,7 +743,7 @@ namespace vesuvio {
 	void Application::createSwapChainImageViews() {
 		swapChainImageViews.resize(swapChainImages.size());
 		for (uint32_t i = 0; i < swapChainImages.size(); i++) {
-			swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainFormat);
+			swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainFormat, vk::ImageAspectFlagBits::eColor);
 		}
 	}
 
@@ -688,20 +762,37 @@ namespace vesuvio {
 		colorAttachmentRef.attachment = 0;
 		colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
 
+		vk::AttachmentDescription depthAttachment{};
+		depthAttachment.format = findDepthFormat();
+		depthAttachment.samples = vk::SampleCountFlagBits::e1;
+		depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+		depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+		depthAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+		depthAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+		depthAttachment.initialLayout = vk::ImageLayout::eUndefined;
+		depthAttachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+		vk::AttachmentReference depthAttachmentRef{};
+		depthAttachmentRef.attachment = 1;
+		depthAttachmentRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+		std::array<vk::AttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+
 		vk::SubpassDescription subpass{};
 		subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
 		subpass.setColorAttachments(colorAttachmentRef);
+		subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
 		vk::SubpassDependency dependency{};
 		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 		dependency.dstSubpass = 0;
-		dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+		dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
 		dependency.srcAccessMask = vk::AccessFlagBits(0);
-		dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-		dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+		dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
+		dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 
 		vk::RenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.setAttachments(colorAttachment);
+		renderPassInfo.setAttachments(attachments);
 		renderPassInfo.setSubpasses(subpass);
 		renderPassInfo.setDependencies(dependency);
 
@@ -799,6 +890,17 @@ namespace vesuvio {
 		multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
 		multisampling.alphaToOneEnable = VK_FALSE; // Optional
 
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = VK_TRUE;
+		depthStencil.depthCompareOp = vk::CompareOp::eLess;
+		depthStencil.depthBoundsTestEnable = VK_FALSE;
+		depthStencil.minDepthBounds = 0.0f; // Optional
+		depthStencil.maxDepthBounds = 1.0f; // Optional
+		depthStencil.stencilTestEnable = VK_FALSE;
+		depthStencil.front = {}; // Optional
+		depthStencil.back = {}; // Optional
+
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
 		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 		colorBlendAttachment.blendEnable = VK_FALSE;
@@ -842,7 +944,7 @@ namespace vesuvio {
 		pipelineInfo.pViewportState = &viewportState;
 		pipelineInfo.pRasterizationState = &rasterizer;
 		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = nullptr; // optional
+		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicStateInfo;
 		pipelineInfo.layout = pipelineLayout;
@@ -862,14 +964,15 @@ namespace vesuvio {
 	void Application::createFramebuffers() {
 		swapChainFramebuffers.resize(swapChainImageViews.size());
 		for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-			vk::ImageView attachments[] = {
-				swapChainImageViews[i]
+			std::array<vk::ImageView, 2> attachments = {
+				swapChainImageViews[i],
+				depthImageView
 			};
 
 			vk::FramebufferCreateInfo framebufferInfo{};
 			framebufferInfo.renderPass = renderPass;
-			framebufferInfo.attachmentCount = 1;
-			framebufferInfo.pAttachments = attachments;
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
 			framebufferInfo.width = swapChainExtent.width;
 			framebufferInfo.height = swapChainExtent.height;
 			framebufferInfo.layers = 1;
@@ -900,6 +1003,22 @@ namespace vesuvio {
 		}
 	}
 
+	void Application::createDepthResources() {
+		vk::Format depthFormat = findDepthFormat();
+		createImage2D(
+			swapChainExtent.width, swapChainExtent.height,
+			depthFormat,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eDepthStencilAttachment,
+			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			depthImage, depthImageMemory
+		);
+		depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+
+		transitionImageLayout(depthImage, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+
+	}
+
 	void Application::createTextureImage() {
 		int texWidth;
 		int texHeight;
@@ -921,32 +1040,13 @@ namespace vesuvio {
 		device.unmapMemory(stagingBuffer.memory);
 		stbi_image_free(pixels);
 
-		vk::ImageCreateInfo imageInfo{};
-		imageInfo.imageType = vk::ImageType::e2D;
-		imageInfo.extent.width = static_cast<uint32_t>(texWidth);
-		imageInfo.extent.height = static_cast<uint32_t>(texHeight);
-		imageInfo.extent.depth = 1;
-		imageInfo.mipLevels = 1;
-		imageInfo.arrayLayers = 1;
-		imageInfo.format = vk::Format::eR8G8B8A8Srgb;
-		imageInfo.tiling = vk::ImageTiling::eOptimal;
-		imageInfo.usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled;
-		imageInfo.sharingMode = vk::SharingMode::eExclusive;
-		imageInfo.samples = vk::SampleCountFlagBits::e1;
-		imageInfo.flags = vk::ImageCreateFlags(); // Optional
-
-		textureImage = device.createImage(imageInfo);
-		assert(textureImage);
-
-		vk::MemoryRequirements memRequirements = device.getImageMemoryRequirements(textureImage);
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-		textureImageMemory = device.allocateMemory(allocInfo);
-		assert(textureImageMemory);
-
-		device.bindImageMemory(textureImage, textureImageMemory, 0);
+		createImage2D(
+			static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight),
+			vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			textureImage, textureImageMemory
+		);
 
 		vk::CommandBuffer commandBuffer = beginOneTimeCommandBuffer(graphicsCommandPool);
 		transitionImageLayout(
@@ -971,7 +1071,7 @@ namespace vesuvio {
 	}
 
 	void Application::createTextureImageView() {
-		textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb);
+		textureImageView = createImageView(textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
 	}
 
 	void Application::createTextureSampler() {
@@ -1169,15 +1269,18 @@ namespace vesuvio {
 			commandBuffers[i].begin(beginInfo);
 
 			std::array<float, 4> clearColorValues = { 0.0f, 0.0f, 0.0f, 1.0f };
-			vk::ClearValue clearColor = vk::ClearColorValue(clearColorValues);
+			std::array<vk::ClearValue, 2> clearValues = {
+				vk::ClearColorValue(clearColorValues),
+				vk::ClearDepthStencilValue(1.0f, 0)
+			};
 
 			vk::RenderPassBeginInfo renderPassInfo{};
 			renderPassInfo.renderPass = renderPass;
 			renderPassInfo.framebuffer = swapChainFramebuffers[i];
 			renderPassInfo.renderArea.offset = { 0, 0 };
 			renderPassInfo.renderArea.extent = swapChainExtent;
-			renderPassInfo.clearValueCount = 1;
-			renderPassInfo.pClearValues = &clearColor;
+			renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+			renderPassInfo.pClearValues = clearValues.data();
 
 			commandBuffers[i].beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 			commandBuffers[i].setViewport(0, viewport);
@@ -1220,6 +1323,10 @@ namespace vesuvio {
 	}
 
 	void Application::cleanupSwapChain() {
+		device.destroyImageView(depthImageView);
+		device.destroyImage(depthImage);
+		device.freeMemory(depthImageMemory);
+
 		for (auto& framebuffer : swapChainFramebuffers) {
 			device.destroyFramebuffer(framebuffer);
 		}
@@ -1255,6 +1362,7 @@ namespace vesuvio {
 		createSwapChain();
 		createSwapChainImageViews();
 		createRenderPass();
+		createDepthResources();
 		createFramebuffers();
 		createUniformBuffers();
 		createDescriptorPool();
@@ -1334,8 +1442,8 @@ namespace vesuvio {
 		float elapsedTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
 		UniformBufferObject ubo{};
-		ubo.model = glm::rotate(glm::mat4(1.0f), elapsedTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = glm::lookAt(glm::vec3(0.0f, 2.0f, -2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		ubo.model = glm::rotate(glm::mat4(1.0f), elapsedTime * glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.view = glm::lookAt(glm::vec3(sinf(elapsedTime * 0.5f) * 1.5f, sinf(elapsedTime * 0.3f), -2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		constexpr float fovy = glm::radians(45.0f);
 		const float aspect = swapChainExtent.width / (float)swapChainExtent.height;
 		const float f = 1.0f / tanf(fovy * 0.5f);

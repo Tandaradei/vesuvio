@@ -74,6 +74,7 @@ namespace vesuvio {
 		void createGraphicsPipeline();
 		void createFramebuffers();
 		void createCommandPools();
+		void createDepthResources();
 		void createTextureImage();
 		void createTextureImageView();
 		void createTextureSampler();
@@ -99,11 +100,12 @@ namespace vesuvio {
 		vk::Extent2D chooseSwapChainExtent(const vk::SurfaceCapabilitiesKHR& capabilities);
 		vk::DebugUtilsMessengerCreateInfoEXT getDebugMessengerCreateInfo();
 		vk::ShaderModule createShaderModule(const std::vector<char>& shaderCode);
-		vk::ImageView createImageView(vk::Image image, vk::Format format);
+		vk::ImageView createImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags);
 
 		uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 		AllocatedBuffer createAllocatedBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
 											  vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties);
+		void createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties, vk::Image& dstImage, vk::DeviceMemory& dstImageMemory);
 		void copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size, vk::CommandBuffer commandBuffer = nullptr);
 		void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, vk::CommandBuffer commandBuffer = nullptr);
 		vk::CommandBuffer beginOneTimeCommandBuffer(vk::CommandPool pool);
@@ -112,6 +114,10 @@ namespace vesuvio {
 		
 		bool checkValidationLayerSupport();
 		std::vector<const char*> getRequiredExtensions();
+
+		vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
+		vk::Format findDepthFormat();
+		bool hasStencilComponent(vk::Format format);
 
 		static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 															VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -166,6 +172,10 @@ namespace vesuvio {
 		vk::PipelineLayout pipelineLayout;
 		vk::Pipeline graphicsPipeline;
 
+		vk::Image depthImage;
+		vk::DeviceMemory depthImageMemory;
+		vk::ImageView depthImageView;
+
 		vk::Image textureImage;
 		vk::DeviceMemory textureImageMemory;
 		vk::ImageView textureImageView;
@@ -183,11 +193,17 @@ namespace vesuvio {
 			{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
 			{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
 			{{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-			{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
+			{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
+
+			{{-0.5f, -1.0f, 0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+			{{0.5f, -1.0f, 0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+			{{0.5f, 0.0f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+			{{-0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 		};
 
 		const std::vector<uint16_t> indices = {
-			0, 1, 2, 2, 3, 0
+			0, 1, 2, 2, 3, 0,
+			4, 5, 6, 6, 7, 4
 		};
 
 		// vulkan debug
