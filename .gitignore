@@ -1,0 +1,10 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/binaries/x64/Debug
+/vesuvio/build/x64/Debug
+/vesuvio/vesuvio.vcxproj.filters
+/vesuvio/vesuvio.vcxproj.user
+/vesuvio/assets/shaders/compiled
