@@ -211,7 +211,7 @@ namespace vesuvio {
 		return 0;
 	}
 
-	vk::Result Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, VmaAllocation& allocation) {
+	vk::Result Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::ArrayProxy<uint32_t> queueFamilyIndices, VmaMemoryUsage memoryUsage, vk::Buffer& buffer, VmaAllocation& allocation) {
 		vk::BufferCreateInfo bufferInfo{};
 		bufferInfo.size = size;
 		bufferInfo.usage = usage;
@@ -220,14 +220,12 @@ namespace vesuvio {
 		bufferInfo.sharingMode = queueFamilyIndices.size() > 1 ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive;
 
 		VmaAllocationCreateInfo allocInfo = {};
-		allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-		allocInfo.requiredFlags = static_cast<VkMemoryPropertyFlags>(properties);
-
+		allocInfo.usage = memoryUsage;
 		VkResult result = vmaCreateBuffer(allocator, (VkBufferCreateInfo*)&bufferInfo, &allocInfo, (VkBuffer*)&buffer, &allocation, nullptr);
 		return vk::Result(result);
 	}
 
-	vk::Result Application::createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties, vk::Image& image, VmaAllocation& allocation) {
+	vk::Result Application::createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, VmaMemoryUsage memoryUsage, vk::Image& image, VmaAllocation& allocation) {
 		vk::ImageCreateInfo imageInfo{};
 		imageInfo.imageType = vk::ImageType::e2D;
 		imageInfo.extent.width = width;
@@ -243,8 +241,7 @@ namespace vesuvio {
 		imageInfo.flags = vk::ImageCreateFlags(); // Optional
 
 		VmaAllocationCreateInfo allocInfo = {};
-		allocInfo.requiredFlags = static_cast<VkMemoryPropertyFlags>(memoryProperties);
-		allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+		allocInfo.usage = memoryUsage;
 
 		VkResult result = vmaCreateImage(allocator, (VkImageCreateInfo*)&imageInfo, &allocInfo, (VkImage*)&image, &allocation, nullptr);
 		return vk::Result(result);
@@ -1004,7 +1001,7 @@ namespace vesuvio {
 			depthFormat,
 			vk::ImageTiling::eOptimal,
 			vk::ImageUsageFlagBits::eDepthStencilAttachment,
-			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			VMA_MEMORY_USAGE_GPU_ONLY,
 			depthImage, depthImageAlloc
 		));
 		depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
@@ -1028,7 +1025,7 @@ namespace vesuvio {
 			imageSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			queueFamilyIndices.transfer.value(),
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			VMA_MEMORY_USAGE_CPU_ONLY,
 			stagingBuffer, stagingBufferAlloc
 		));
 
@@ -1042,7 +1039,7 @@ namespace vesuvio {
 			static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight),
 			vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
 			vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			VMA_MEMORY_USAGE_GPU_ONLY,
 			textureImage, textureImageAlloc
 		));
 
@@ -1111,7 +1108,7 @@ namespace vesuvio {
 			bufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			stagingIndices,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			VMA_MEMORY_USAGE_CPU_ONLY,
 			stagingBuffer, stagingBufferAlloc
 		));
 
@@ -1125,7 +1122,7 @@ namespace vesuvio {
 			bufferSize,
 			vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
 			indices,
-			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			VMA_MEMORY_USAGE_GPU_ONLY,
 			vertexBuffer, vertexBufferAlloc
 		));
 
@@ -1144,7 +1141,7 @@ namespace vesuvio {
 			bufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			stagingIndices,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			VMA_MEMORY_USAGE_CPU_ONLY,
 			stagingBuffer, stagingBufferAlloc
 		));
 
@@ -1159,7 +1156,7 @@ namespace vesuvio {
 			bufferSize,
 			vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
 			queueIndices,
-			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			VMA_MEMORY_USAGE_GPU_ONLY,
 			indexBuffer, indexBufferAlloc
 		));
 
@@ -1179,7 +1176,7 @@ namespace vesuvio {
 				bufferSize,
 				vk::BufferUsageFlagBits::eUniformBuffer,
 				queueFamilyIndices.graphics.value(),
-				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+				VMA_MEMORY_USAGE_CPU_TO_GPU,
 				uniformBuffers[i], uniformBufferAllocs[i]
 			));
 		}

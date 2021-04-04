@@ -102,11 +102,11 @@ namespace vesuvio {
 
 		uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 		vk::Result createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-								vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties,
+								vk::ArrayProxy<uint32_t> queueFamilyIndices, VmaMemoryUsage memoryUsage,
 								vk::Buffer& buffer, VmaAllocation& allocation);
 		vk::Result createImage2D(uint32_t width, uint32_t height, 
 								vk::Format format, vk::ImageTiling tiling, 
-								vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties,
+								vk::ImageUsageFlags usage, VmaMemoryUsage memoryUsage,
 								vk::Image& image, VmaAllocation& allocation);
 		void copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size, vk::CommandBuffer commandBuffer = nullptr);
 		void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, vk::CommandBuffer commandBuffer = nullptr);
