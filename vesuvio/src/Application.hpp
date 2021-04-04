@@ -9,6 +9,8 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+#include "vk_mem_alloc.h"
+
 #include "Vertex.hpp"
 
 #define VK_CHECK(expr) {vk::Result result = expr; assert(result == vk::Result::eSuccess);}
@@ -50,11 +52,6 @@ namespace vesuvio {
 			std::vector<vk::PresentModeKHR> presentModes;
 		};
 
-		struct AllocatedBuffer
-		{
-			vk::Buffer buffer;
-			vk::DeviceMemory memory;
-		};
 	private:
 		void initWindow();
 		void initVulkan();
@@ -66,6 +63,7 @@ namespace vesuvio {
 		void createSurface();
 		void pickPhysicalDevice();
 		void createLogicalDevice();
+		void createVmaAllocator();
 		void createSwapChain();
 		void createSwapChainImageViews();
 		void createSyncObjects();
@@ -103,9 +101,13 @@ namespace vesuvio {
 		vk::ImageView createImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags);
 
 		uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
-		AllocatedBuffer createAllocatedBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-											  vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties);
-		void createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties, vk::Image& dstImage, vk::DeviceMemory& dstImageMemory);
+		vk::Result createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+								vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties,
+								vk::Buffer& buffer, VmaAllocation& allocation);
+		vk::Result createImage2D(uint32_t width, uint32_t height, 
+								vk::Format format, vk::ImageTiling tiling, 
+								vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties,
+								vk::Image& image, VmaAllocation& allocation);
 		void copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size, vk::CommandBuffer commandBuffer = nullptr);
 		void copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, vk::CommandBuffer commandBuffer = nullptr);
 		vk::CommandBuffer beginOneTimeCommandBuffer(vk::CommandPool pool);
@@ -143,6 +145,7 @@ namespace vesuvio {
 		vk::SurfaceKHR surface;
 		vk::PhysicalDevice physicalDevice;
 		vk::Device device;
+		VmaAllocator allocator;
 		vk::Queue graphicsQueue;
 		vk::Queue presentQueue;
 		vk::Queue transferQueue;
@@ -173,17 +176,20 @@ namespace vesuvio {
 		vk::Pipeline graphicsPipeline;
 
 		vk::Image depthImage;
-		vk::DeviceMemory depthImageMemory;
+		VmaAllocation depthImageAlloc;
 		vk::ImageView depthImageView;
 
 		vk::Image textureImage;
-		vk::DeviceMemory textureImageMemory;
+		VmaAllocation textureImageAlloc;
 		vk::ImageView textureImageView;
 		vk::Sampler textureSampler;
 
-		AllocatedBuffer vertexBuffer;
-		AllocatedBuffer indexBuffer;
-		std::vector<AllocatedBuffer> uniformBuffers;
+		vk::Buffer vertexBuffer;
+		VmaAllocation vertexBufferAlloc;
+		vk::Buffer indexBuffer;
+		VmaAllocation indexBufferAlloc;
+		std::vector<vk::Buffer> uniformBuffers;
+		std::vector<VmaAllocation> uniformBufferAllocs;
 
 		const std::vector<const char*> deviceExtensions = {
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME

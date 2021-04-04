@@ -12,8 +12,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-//#define VMA_IMPLEMENTATION
-//#include <vk_mem_alloc.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 #include "UniformBufferObject.hpp"
 
@@ -81,6 +81,7 @@ namespace vesuvio {
 		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
+		createVmaAllocator();
 		createSwapChain();
 		createSwapChainImageViews();
 		createSyncObjects();
@@ -210,9 +211,7 @@ namespace vesuvio {
 		return 0;
 	}
 
-	Application::AllocatedBuffer Application::createAllocatedBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties) {
-		AllocatedBuffer allocatedBuffer;
-
+	vk::Result Application::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::ArrayProxy<uint32_t> queueFamilyIndices, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, VmaAllocation& allocation) {
 		vk::BufferCreateInfo bufferInfo{};
 		bufferInfo.size = size;
 		bufferInfo.usage = usage;
@@ -220,24 +219,15 @@ namespace vesuvio {
 		bufferInfo.pQueueFamilyIndices = queueFamilyIndices.data();
 		bufferInfo.sharingMode = queueFamilyIndices.size() > 1 ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive;
 
-		allocatedBuffer.buffer = device.createBuffer(bufferInfo);
-		assert(allocatedBuffer.buffer);
+		VmaAllocationCreateInfo allocInfo = {};
+		allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+		allocInfo.requiredFlags = static_cast<VkMemoryPropertyFlags>(properties);
 
-		vk::MemoryRequirements memRequirements = device.getBufferMemoryRequirements(allocatedBuffer.buffer);
-
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-		allocatedBuffer.memory = device.allocateMemory(allocInfo);
-		assert(allocatedBuffer.memory);
-
-		device.bindBufferMemory(allocatedBuffer.buffer, allocatedBuffer.memory, 0);
-
-		return allocatedBuffer;
+		VkResult result = vmaCreateBuffer(allocator, (VkBufferCreateInfo*)&bufferInfo, &allocInfo, (VkBuffer*)&buffer, &allocation, nullptr);
+		return vk::Result(result);
 	}
 
-	void Application::createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties, vk::Image& dstImage, vk::DeviceMemory& dstImageMemory) {
+	vk::Result Application::createImage2D(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags memoryProperties, vk::Image& image, VmaAllocation& allocation) {
 		vk::ImageCreateInfo imageInfo{};
 		imageInfo.imageType = vk::ImageType::e2D;
 		imageInfo.extent.width = width;
@@ -252,18 +242,12 @@ namespace vesuvio {
 		imageInfo.samples = vk::SampleCountFlagBits::e1;
 		imageInfo.flags = vk::ImageCreateFlags(); // Optional
 
-		dstImage = device.createImage(imageInfo);
-		assert(dstImage);
+		VmaAllocationCreateInfo allocInfo = {};
+		allocInfo.requiredFlags = static_cast<VkMemoryPropertyFlags>(memoryProperties);
+		allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-		vk::MemoryRequirements memRequirements = device.getImageMemoryRequirements(dstImage);
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, memoryProperties);
-
-		dstImageMemory = device.allocateMemory(allocInfo);
-		assert(dstImageMemory);
-
-		device.bindImageMemory(dstImage, dstImageMemory, 0);
+		VkResult result = vmaCreateImage(allocator, (VkImageCreateInfo*)&imageInfo, &allocInfo, (VkImage*)&image, &allocation, nullptr);
+		return vk::Result(result);
 	}
 
 	void Application::copyBuffer(vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size, vk::CommandBuffer commandBuffer) {
@@ -690,6 +674,16 @@ namespace vesuvio {
 		printf(" Transfer queue: %d\n", queueFamilyIndices.transfer.value());
 	}
 
+	void Application::createVmaAllocator() {
+		VmaAllocatorCreateInfo allocatorInfo = {};
+		allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2;
+		allocatorInfo.physicalDevice = physicalDevice;
+		allocatorInfo.device = device;
+		allocatorInfo.instance = instance;
+		
+		vmaCreateAllocator(&allocatorInfo, &allocator);
+	}
+
 	void Application::createSwapChain() {
 		printf("Creating swap chain\n");
 		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
@@ -1005,14 +999,14 @@ namespace vesuvio {
 
 	void Application::createDepthResources() {
 		vk::Format depthFormat = findDepthFormat();
-		createImage2D(
+		VK_CHECK(createImage2D(
 			swapChainExtent.width, swapChainExtent.height,
 			depthFormat,
 			vk::ImageTiling::eOptimal,
 			vk::ImageUsageFlagBits::eDepthStencilAttachment,
 			vk::MemoryPropertyFlagBits::eDeviceLocal,
-			depthImage, depthImageMemory
-		);
+			depthImage, depthImageAlloc
+		));
 		depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
 
 		transitionImageLayout(depthImage, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
@@ -1028,25 +1022,29 @@ namespace vesuvio {
 
 		vk::DeviceSize imageSize = static_cast<uint64_t>(texWidth) * static_cast<uint64_t>(texHeight) * 4;
 
-		AllocatedBuffer stagingBuffer = createAllocatedBuffer(
+		vk::Buffer stagingBuffer;
+		VmaAllocation stagingBufferAlloc;
+		VK_CHECK(createBuffer(
 			imageSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			queueFamilyIndices.transfer.value(),
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-		);
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			stagingBuffer, stagingBufferAlloc
+		));
 
-		void* data = device.mapMemory(stagingBuffer.memory, 0, imageSize, vk::MemoryMapFlags());
-		memcpy(data, pixels, static_cast<size_t>(imageSize));
-		device.unmapMemory(stagingBuffer.memory);
+		void* mappedData;
+		vmaMapMemory(allocator, stagingBufferAlloc, &mappedData);
+		memcpy(mappedData, pixels, static_cast<size_t>(imageSize));
+		vmaUnmapMemory(allocator, stagingBufferAlloc);
 		stbi_image_free(pixels);
 
-		createImage2D(
+		VK_CHECK(createImage2D(
 			static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight),
 			vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
 			vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
 			vk::MemoryPropertyFlagBits::eDeviceLocal,
-			textureImage, textureImageMemory
-		);
+			textureImage, textureImageAlloc
+		));
 
 		vk::CommandBuffer commandBuffer = beginOneTimeCommandBuffer(graphicsCommandPool);
 		transitionImageLayout(
@@ -1055,7 +1053,7 @@ namespace vesuvio {
 			commandBuffer
 		);
 		copyBufferToImage(
-			stagingBuffer.buffer, textureImage,
+			stagingBuffer, textureImage,
 			static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight),
 			commandBuffer
 		);
@@ -1066,8 +1064,7 @@ namespace vesuvio {
 		);
 		endOneTimeCommandBuffer(commandBuffer, graphicsCommandPool, graphicsQueue);
 
-		device.destroyBuffer(stagingBuffer.buffer);
-		device.freeMemory(stagingBuffer.memory);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAlloc);
 	}
 
 	void Application::createTextureImageView() {
@@ -1108,71 +1105,83 @@ namespace vesuvio {
 		const vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
 		std::vector<uint32_t> stagingIndices = { queueFamilyIndices.transfer.value() };
-		AllocatedBuffer stagingBuffer = createAllocatedBuffer(
+		vk::Buffer stagingBuffer;
+		VmaAllocation stagingBufferAlloc;
+		VK_CHECK(createBuffer(
 			bufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			stagingIndices,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-		);
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			stagingBuffer, stagingBufferAlloc
+		));
 
-		void* data = device.mapMemory(stagingBuffer.memory, 0, bufferSize, vk::MemoryMapFlagBits(0));
-		memcpy(data, vertices.data(), bufferSize);
-		device.unmapMemory(stagingBuffer.memory);
+		void* mappedData;
+		vmaMapMemory(allocator, stagingBufferAlloc, &mappedData);
+		memcpy(mappedData, vertices.data(), bufferSize);
+		vmaUnmapMemory(allocator, stagingBufferAlloc);
 
 		std::vector<uint32_t> indices = { queueFamilyIndices.graphics.value(), queueFamilyIndices.transfer.value() };
-		vertexBuffer = createAllocatedBuffer(
+		VK_CHECK(createBuffer(
 			bufferSize,
 			vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
 			indices,
-			vk::MemoryPropertyFlagBits::eDeviceLocal
-		);
+			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			vertexBuffer, vertexBufferAlloc
+		));
 
-		copyBuffer(stagingBuffer.buffer, vertexBuffer.buffer, bufferSize);
+		copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 
-		device.destroyBuffer(stagingBuffer.buffer);
-		device.freeMemory(stagingBuffer.memory);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAlloc);
 	}
 
 	void Application::createIndexBuffer() {
 		const vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
 		std::vector<uint32_t> stagingIndices = { queueFamilyIndices.transfer.value() };
-		AllocatedBuffer stagingBuffer = createAllocatedBuffer(
+		vk::Buffer stagingBuffer;
+		VmaAllocation stagingBufferAlloc;
+		VK_CHECK(createBuffer(
 			bufferSize,
 			vk::BufferUsageFlagBits::eTransferSrc,
 			stagingIndices,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-		);
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			stagingBuffer, stagingBufferAlloc
+		));
 
-		void* data = device.mapMemory(stagingBuffer.memory, 0, bufferSize, vk::MemoryMapFlagBits(0));
-		memcpy(data, indices.data(), bufferSize);
-		device.unmapMemory(stagingBuffer.memory);
+		
+		void* mappedData;
+		vmaMapMemory(allocator, stagingBufferAlloc, &mappedData);
+		memcpy(mappedData, indices.data(), bufferSize);
+		vmaUnmapMemory(allocator, stagingBufferAlloc);
 
 		std::vector<uint32_t> queueIndices = { queueFamilyIndices.graphics.value(), queueFamilyIndices.transfer.value() };
-		indexBuffer = createAllocatedBuffer(
+		VK_CHECK(createBuffer(
 			bufferSize,
 			vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
 			queueIndices,
-			vk::MemoryPropertyFlagBits::eDeviceLocal
-		);
+			vk::MemoryPropertyFlagBits::eDeviceLocal,
+			indexBuffer, indexBufferAlloc
+		));
 
-		copyBuffer(stagingBuffer.buffer, indexBuffer.buffer, bufferSize);
+		copyBuffer(stagingBuffer, indexBuffer, bufferSize);
 
-		device.destroyBuffer(stagingBuffer.buffer);
-		device.freeMemory(stagingBuffer.memory);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAlloc);
 	}
 
 	void Application::createUniformBuffers() {
 		vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
 		uniformBuffers.resize(swapChainImages.size());
-		for (auto& uniformBuffer : uniformBuffers) {
-			uniformBuffer = createAllocatedBuffer(
+		uniformBufferAllocs.resize(uniformBuffers.size());
+
+		for (size_t i = 0; i < uniformBuffers.size(); i++) {
+			VK_CHECK(createBuffer(
 				bufferSize,
 				vk::BufferUsageFlagBits::eUniformBuffer,
 				queueFamilyIndices.graphics.value(),
-				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-			);
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+				uniformBuffers[i], uniformBufferAllocs[i]
+			));
 		}
 	}
 
@@ -1209,7 +1218,7 @@ namespace vesuvio {
 			std::array<vk::WriteDescriptorSet, 2> descriptorWrites{};
 
 			vk::DescriptorBufferInfo bufferInfo{};
-			bufferInfo.buffer = uniformBuffers[i].buffer;
+			bufferInfo.buffer = uniformBuffers[i];
 			bufferInfo.offset = 0;
 			bufferInfo.range = sizeof(UniformBufferObject);
 
@@ -1286,10 +1295,10 @@ namespace vesuvio {
 			commandBuffers[i].setViewport(0, viewport);
 			commandBuffers[i].setScissor(0, scissor);
 			commandBuffers[i].bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
-			std::vector<vk::Buffer> vertexBuffers = { vertexBuffer.buffer };
+			std::vector<vk::Buffer> vertexBuffers = { vertexBuffer };
 			std::vector<vk::DeviceSize> offsets = { 0 };
 			commandBuffers[i].bindVertexBuffers(0, vertexBuffers, offsets);
-			commandBuffers[i].bindIndexBuffer(indexBuffer.buffer, 0, vk::IndexType::eUint16);
+			commandBuffers[i].bindIndexBuffer(indexBuffer, 0, vk::IndexType::eUint16);
 			commandBuffers[i].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, descriptorSets[i], {});
 			commandBuffers[i].drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 			commandBuffers[i].endRenderPass();
@@ -1324,8 +1333,7 @@ namespace vesuvio {
 
 	void Application::cleanupSwapChain() {
 		device.destroyImageView(depthImageView);
-		device.destroyImage(depthImage);
-		device.freeMemory(depthImageMemory);
+		vmaDestroyImage(allocator, depthImage, depthImageAlloc);
 
 		for (auto& framebuffer : swapChainFramebuffers) {
 			device.destroyFramebuffer(framebuffer);
@@ -1340,9 +1348,8 @@ namespace vesuvio {
 
 		device.destroySwapchainKHR(swapChain);
 
-		for (auto& uniformBuffer : uniformBuffers) {
-			device.destroyBuffer(uniformBuffer.buffer);
-			device.freeMemory(uniformBuffer.memory);
+		for (size_t i = 0; i < uniformBuffers.size(); i++) {
+			vmaDestroyBuffer(allocator, uniformBuffers[i], uniformBufferAllocs[i]);
 		}
 		device.destroyDescriptorPool(descriptorPool);
 	}
@@ -1455,14 +1462,14 @@ namespace vesuvio {
 			{ 0.0f, 0.0f, nearPlane, 0.0f } // fourth COLUMN
 		};
 
-		void* data = device.mapMemory(
-			uniformBuffers[currentImage].memory,
-			0,
-			sizeof(ubo),
-			vk::MemoryMapFlagBits(0)
+		void* mappedData;
+		vmaMapMemory(
+			allocator,
+			uniformBufferAllocs[currentImage],
+			&mappedData
 		);
-		memcpy(data, &ubo, sizeof(ubo));
-		device.unmapMemory(uniformBuffers[currentImage].memory);
+		memcpy(mappedData, &ubo, sizeof(ubo));
+		vmaUnmapMemory(allocator, uniformBufferAllocs[currentImage]);
 	}
 
 	void Application::mainLoop() {
@@ -1482,16 +1489,12 @@ namespace vesuvio {
 		device.destroyPipelineLayout(pipelineLayout);
 		device.destroyDescriptorSetLayout(descriptorSetLayout);
 
-		device.destroyBuffer(vertexBuffer.buffer);
-		device.freeMemory(vertexBuffer.memory);
-
-		device.destroyBuffer(indexBuffer.buffer);
-		device.freeMemory(indexBuffer.memory);
+		vmaDestroyBuffer(allocator, vertexBuffer, vertexBufferAlloc);
+		vmaDestroyBuffer(allocator, indexBuffer, indexBufferAlloc);
 
 		device.destroySampler(textureSampler);
 		device.destroyImageView(textureImageView);
-		device.destroyImage(textureImage);
-		device.freeMemory(textureImageMemory);
+		vmaDestroyImage(allocator, textureImage, textureImageAlloc);
 
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			device.destroySemaphore(imageAvailableSemaphores[i]);
@@ -1502,6 +1505,7 @@ namespace vesuvio {
 
 		device.destroyCommandPool(graphicsCommandPool);
 		device.destroyCommandPool(transferCommandPool);
+		vmaDestroyAllocator(allocator);
 		device.destroy();
 		if (enableValidationLayers) {
 			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);

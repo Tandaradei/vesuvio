@@ -10,6 +10,7 @@ SET(VULKAN_INCLUDE "/usr/include/vulkan")
 SET(GLFW_INCLUDE "/home/laurin/libs/glfw-3.3.3/include")
 SET(GLM_INCLUDE "/home/laurin/libs/glm")
 SET(STB_INCLUDE "/home/laurin/libs/stb")
+SET(VMA_INCLUDE "/home/laurin/libs/VulkanMemoryAllocator/src")
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -25,12 +26,14 @@ ${GLM_INCLUDE}/glm/vec4.hpp
 ${GLM_INCLUDE}/glm/mat4x4.hpp
 ${GLM_INCLUDE}/glm/gtc/matrix_transform.hpp
 ${STB_INCLUDE}/stb_image.h
+${VMA_INCLUDE}/vk_mem_alloc.h
 )
 
 TARGET_INCLUDE_DIRECTORIES(vesuvio PRIVATE ${VULKAN_INCLUDE})
 TARGET_INCLUDE_DIRECTORIES(vesuvio PRIVATE ${GLFW_INCLUDE})
 TARGET_INCLUDE_DIRECTORIES(vesuvio PRIVATE ${GLM_INCLUDE})
 TARGET_INCLUDE_DIRECTORIES(vesuvio PRIVATE ${STB_INCLUDE})
+TARGET_INCLUDE_DIRECTORIES(vesuvio PRIVATE ${VMA_INCLUDE})
 
 target_link_libraries(vesuvio glfw vulkan dl pthread X11 Xxf86vm Xrandr Xi)
 
