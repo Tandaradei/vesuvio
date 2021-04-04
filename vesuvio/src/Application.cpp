@@ -22,7 +22,7 @@ namespace vesuvio {
 	vk::Result CreateDebugUtilsMessengerEXT(vk::Instance& instance, const vk::DebugUtilsMessengerCreateInfoEXT& createInfo, const vk::AllocationCallbacks* allocator, vk::DebugUtilsMessengerEXT& debugMessenger) {
 		PFN_vkCreateDebugUtilsMessengerEXT func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(instance.getProcAddr("vkCreateDebugUtilsMessengerEXT"));
 		if (func != nullptr) {
-			VkResult result = func(instance, &(VkDebugUtilsMessengerCreateInfoEXT)(createInfo), (VkAllocationCallbacks*)(allocator), (VkDebugUtilsMessengerEXT*)(&debugMessenger));
+			VkResult result = func(instance, (VkDebugUtilsMessengerCreateInfoEXT*)(&createInfo), (VkAllocationCallbacks*)(allocator), (VkDebugUtilsMessengerEXT*)(&debugMessenger));
 			return static_cast<vk::Result>(result);
 		}
 		else {
@@ -40,7 +40,7 @@ namespace vesuvio {
 		file.read(buffer.data(), fileSize);
 		file.close();
 
-		printf("Read '%s' (%d bytes)\n", fileName.data(), buffer.size());
+		printf("Read '%s' (%lu bytes)\n", fileName.data(), buffer.size());
 		return buffer;
 	}
 
@@ -282,7 +282,7 @@ namespace vesuvio {
 			endOneTimeCommandBuffer(commandBuffer, transferCommandPool, transferQueue);
 		}
 
-		printf("Copied %lld bytes between buffers\n", size);
+		printf("Copied %lu bytes between buffers\n", size);
 	}
 
 	void Application::copyBufferToImage(vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height, vk::CommandBuffer commandBuffer) {
@@ -301,8 +301,8 @@ namespace vesuvio {
 		copyRegion.imageSubresource.baseArrayLayer = 0;
 		copyRegion.imageSubresource.layerCount = 1;
 
-		copyRegion.imageOffset = { 0, 0, 0 };
-		copyRegion.imageExtent = { width, height, 1 };
+		copyRegion.imageOffset = (vk::Offset3D){ 0, 0, 0 };
+		copyRegion.imageExtent = (vk::Extent3D){ width, height, 1 };
 
 		commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, copyRegion);
 
@@ -310,7 +310,7 @@ namespace vesuvio {
 			endOneTimeCommandBuffer(commandBuffer, transferCommandPool, transferQueue);
 		}
 
-		printf("Copied from buffer to image (%ldx%ld)\n", width, height);
+		printf("Copied from buffer to image (%ux%u)\n", width, height);
 	}
 
 	vk::CommandBuffer Application::beginOneTimeCommandBuffer(vk::CommandPool pool) {
@@ -695,9 +695,9 @@ namespace vesuvio {
 		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
 
 		vk::SurfaceFormatKHR surfaceFormat = chooseSwapChainSurfaceFormat(swapChainSupport.formats);
-		printf("Selected format: %d with color space: %d\n", surfaceFormat.format, surfaceFormat.colorSpace);
+		printf("Selected format: %u with color space: %u\n", static_cast<uint32_t>(surfaceFormat.format), static_cast<uint32_t>(surfaceFormat.colorSpace));
 		vk::PresentModeKHR presentMode = chooseSwapChainPresentMode(swapChainSupport.presentModes);
-		printf("Selected present mode: %d\n", presentMode);
+		printf("Selected present mode: %u\n", static_cast<uint32_t>(presentMode));
 		vk::Extent2D extent = chooseSwapChainExtent(swapChainSupport.capabilities);
 		printf("Selected extent: %dx%d\n", extent.width, extent.height);
 
@@ -898,8 +898,8 @@ namespace vesuvio {
 		depthStencil.minDepthBounds = 0.0f; // Optional
 		depthStencil.maxDepthBounds = 1.0f; // Optional
 		depthStencil.stencilTestEnable = VK_FALSE;
-		depthStencil.front = {}; // Optional
-		depthStencil.back = {}; // Optional
+		depthStencil.front = (vk::StencilOpState){}; // Optional
+		depthStencil.back = (vk::StencilOpState){}; // Optional
 
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
 		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
@@ -1252,7 +1252,7 @@ namespace vesuvio {
 		viewport.maxDepth = 0.0f;
 
 		vk::Rect2D scissor{};
-		scissor.offset = { 0, 0 };
+		scissor.offset = (vk::Offset2D){ 0, 0 };
 		scissor.extent = swapChainExtent;
 
 		vk::CommandBufferAllocateInfo allocInfo{};
@@ -1277,7 +1277,7 @@ namespace vesuvio {
 			vk::RenderPassBeginInfo renderPassInfo{};
 			renderPassInfo.renderPass = renderPass;
 			renderPassInfo.framebuffer = swapChainFramebuffers[i];
-			renderPassInfo.renderArea.offset = { 0, 0 };
+			renderPassInfo.renderArea.offset = (vk::Offset2D){ 0, 0 };
 			renderPassInfo.renderArea.extent = swapChainExtent;
 			renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 			renderPassInfo.pClearValues = clearValues.data();
@@ -1372,7 +1372,7 @@ namespace vesuvio {
 
 	void Application::drawFrame() {
 		uint32_t frameIndex = currentFrame % MAX_FRAMES_IN_FLIGHT;
-		device.waitForFences(inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
+		VK_CHECK(device.waitForFences(inFlightFences[frameIndex], VK_TRUE, UINT64_MAX))
 
 		uint32_t imageIndex;
 		// Have to use the plain C functions here, 
@@ -1387,7 +1387,7 @@ namespace vesuvio {
 
 		// Check if a previous frame is using this image (i.e. there is its fence to wait on)
 		if (imagesInFlight[imageIndex]) {
-			device.waitForFences(imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+			VK_CHECK(device.waitForFences(imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX))
 		}
 		// Mark the image as now being in use by this frame
 		imagesInFlight[imageIndex] = inFlightFences[frameIndex];
@@ -1423,7 +1423,7 @@ namespace vesuvio {
 		// Have to use the plain C functions here, 
 		// because the Vulkan HPP functions will throw an exception
 		// on VK_ERROR_OUT_OF_DATE_KHR
-		vk::Result presentResult = static_cast<vk::Result>(vkQueuePresentKHR(presentQueue, &static_cast<VkPresentInfoKHR>(presentInfo)));
+		vk::Result presentResult = static_cast<vk::Result>(vkQueuePresentKHR(presentQueue, (VkPresentInfoKHR*)(&presentInfo)));
 		if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR || framebufferResized) {
 			recreateSwapChain();
 			framebufferResized = false;

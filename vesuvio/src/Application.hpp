@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include <optional>
 
-#define VK_USE_PLATFORM_WIN32_KHR
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+//#define VK_USE_PLATFORM_WIN32_KHR
 
 #include <vulkan/vulkan.hpp>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 
 #include "Vertex.hpp"
 

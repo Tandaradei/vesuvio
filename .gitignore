@@ -3,8 +3,8 @@
 ################################################################################
 
 /.vs
-/binaries/x64/Debug
-/vesuvio/build/x64/Debug
+/binaries/
+/vesuvio/build/
 /vesuvio/vesuvio.vcxproj.filters
 /vesuvio/vesuvio.vcxproj.user
 /vesuvio/assets/shaders/compiled
