@@ -1,0 +1,10 @@
+﻿Application.obj : error LNK2019: unresolved external symbol _glfwInit referenced in function "private: void __thiscall sample::Application::initWindow(void)" (?initWindow@Application@sample@@AAEXXZ)
+Application.obj : error LNK2019: unresolved external symbol _glfwWindowHint referenced in function "private: void __thiscall sample::Application::initWindow(void)" (?initWindow@Application@sample@@AAEXXZ)
+Application.obj : error LNK2019: unresolved external symbol _glfwCreateWindow referenced in function "private: void __thiscall sample::Application::initWindow(void)" (?initWindow@Application@sample@@AAEXXZ)
+Application.obj : error LNK2019: unresolved external symbol _glfwWindowShouldClose referenced in function "private: void __thiscall sample::Application::mainLoop(void)" (?mainLoop@Application@sample@@AAEXXZ)
+Application.obj : error LNK2019: unresolved external symbol _glfwSetWindowUserPointer referenced in function "private: void __thiscall sample::Application::initWindow(void)" (?initWindow@Application@sample@@AAEXXZ)
+Application.obj : error LNK2019: unresolved external symbol _glfwGetWindowUserPointer referenced in function "private: static void __cdecl sample::Application::framebufferResizeCallback(struct GLFWwindow *,int,int)" (?framebufferResizeCallback@Application@sample@@CAXPAUGLFWwindow@@HH@Z)
+Application.obj : error LNK2019: unresolved external symbol _glfwSetFramebufferSizeCallback referenced in function "private: void __thiscall sample::Application::initWindow(void)" (?initWindow@Application@sample@@AAEXXZ)
+Application.obj : error LNK2019: unresolved external symbol _glfwPollEvents referenced in function "private: void __thiscall sample::Application::mainLoop(void)" (?mainLoop@Application@sample@@AAEXXZ)
+C:\Libraries\glfw-3.3.2.bin.WIN64\lib-vc2019\glfw3.lib : warning LNK4272: library machine type 'x64' conflicts with target machine type 'x86'
+C:\Users\Laurin\source\repos\vesuvio\Debug\sample_app.exe : fatal error LNK1120: 8 unresolved externals

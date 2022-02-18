@@ -1,0 +1,3 @@
+﻿  Runtime.cpp
+C:\Users\Laurin\source\repos\vesuvio\vesuvio\runtime\Runtime.cpp(57,5): warning C4002: too many arguments for function-like macro invocation 'assert'
+  runtime.vcxproj -> C:\Users\Laurin\source\repos\vesuvio\x64\Debug\runtime.lib

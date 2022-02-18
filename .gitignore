@@ -3,8 +3,15 @@
 ################################################################################
 
 /.vs
-/binaries/
-/vesuvio/build/
-/vesuvio/vesuvio.vcxproj.filters
-/vesuvio/vesuvio.vcxproj.user
-/vesuvio/assets/shaders/compiled
+/sample_app/Debug/
+/sample_app/Release/
+/sample_app/x64/
+/sample_app/sample_app.vcxproj.filters
+/sample_app/sample_app.vcxproj.user
+/sample_app/assets/shaders/compiled
+/sample_app/Debug/
+/sample_app/Release/
+/sample_app/x64/
+/sample_app/sample_app.vcxproj.filters
+/sample_app/sample_app.vcxproj.user
+/sample_app/assets/shaders/compiled

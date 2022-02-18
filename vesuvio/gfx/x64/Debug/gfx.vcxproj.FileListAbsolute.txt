@@ -1,0 +1,2 @@
+C:\Users\Laurin\source\repos\vesuvio\x64\Debug\gfx.pdb
+C:\Users\Laurin\source\repos\vesuvio\vesuvio\gfx\x64\Debug\gfx.pdb
