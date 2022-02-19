@@ -3,10 +3,10 @@
 #include <cassert>
 
 #if VSV_GFX_BACKEND(VULKAN)
-#include "vesuvio/gfx/VulkanContext.hpp"
+#include "VulkanContext.hpp"
 #endif
 
-#include "vesuvio/gfx/GfxContextNone.hpp"
+#include "GfxContextNone.hpp"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -47,14 +47,14 @@ namespace vesuvio {
 			#if VSV_GFX_BACKEND(VULKAN)
 				gfx = new VulkanContext();
 			#else
-				assert(false, "Vulkan backend requested but not enabled in the gfx project");
+				assert(false && "Vulkan backend requested but not enabled in the gfx project");
 			#endif
 		}
 		else if (gfxInit.gfxBackend == GfxContext::GfxBackend::D3D12) {
 			#if VSV_GFX_BACKEND(D3D12)
 				gfx = new VulkanContext();
 			#else
-				assert(false, "D3D12 backend requested but not enabled in the gfx project");
+				assert(false && "D3D12 backend requested but not enabled in the gfx project");
 			#endif
 		}
 		assert(gfx);

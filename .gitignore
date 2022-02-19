@@ -3,15 +3,7 @@
 ################################################################################
 
 /.vs
-/sample_app/Debug/
-/sample_app/Release/
-/sample_app/x64/
-/sample_app/sample_app.vcxproj.filters
-/sample_app/sample_app.vcxproj.user
-/sample_app/assets/shaders/compiled
-/sample_app/Debug/
-/sample_app/Release/
-/sample_app/x64/
-/sample_app/sample_app.vcxproj.filters
-/sample_app/sample_app.vcxproj.user
-/sample_app/assets/shaders/compiled
+/build
+/.vscode
+/Debug
+/x64

@@ -45,7 +45,7 @@ namespace vesuvio {
 		file.read(buffer.data(), fileSize);
 		file.close();
 
-		printf("Read '%s' (%llu bytes)\n", fileName.data(), buffer.size());
+		printf("Read '%s' (%lu bytes)\n", fileName.data(), buffer.size());
 		return buffer;
 	}
 
@@ -1568,7 +1568,7 @@ namespace vesuvio {
 		printf("validation layer: %s\n", pCallbackData->pMessage);
 
 		if (messageSeverity == VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-			assert(false);
+			//assert(false);
 		}
 
 		return VK_FALSE;
@@ -1583,7 +1583,7 @@ namespace vesuvio {
 			case Texture::Format::R8G8B8A8Srgb: return vk::Format::eR8G8B8A8Srgb;
 			case Texture::Format::D32Sfloat: return vk::Format::eD32Sfloat;
 			default: 
-				assert(false, "Not implemented (yet)"); 
+				assert(false && "Not implemented (yet)"); 
 				return vk::Format::eUndefined;
 		}
 	}
@@ -1592,7 +1592,7 @@ namespace vesuvio {
 			case Texture::MemoryUsage::CpuToGpu: return VMA_MEMORY_USAGE_CPU_TO_GPU;
 			case Texture::MemoryUsage::GpuOnly: return VMA_MEMORY_USAGE_GPU_ONLY;
 			default:
-				assert(false, "Not implemented (yet)");
+				assert(false && "Not implemented (yet)");
 				return VMA_MEMORY_USAGE_UNKNOWN;
 		}
 	}

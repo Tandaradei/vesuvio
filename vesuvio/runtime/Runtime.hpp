@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <functional>
 
-#define VSV_ENABLE_VULKAN
-#include "vesuvio/gfx/GfxContext.hpp"
+//#define VSV_ENABLE_VULKAN
+#include "GfxContext.hpp"
 
 struct GLFWwindow;
 
